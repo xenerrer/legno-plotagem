@@ -85,21 +85,50 @@ new GLTFLoader().load('assets/saveiro.glb',g=>{
   // plotagem projetada sobre a carroceria (Decal)
   const paint=meshesOf(['CAR_PAINT_2']);
   const halfW=(bx.max.z-bx.min.z)/2;
-  function addDecal(url,side,L,Hh,cx,cy){
-    const mat=new THREE.MeshStandardMaterial({map:tex(url),transparent:true,roughness:.4,metalness:.05,polygonOffset:true,polygonOffsetFactor:-4,depthWrite:false});
+  // projeção planar sobre as faces da lataria (sem recorte por caixa)
+  function project(url,axis,sign,u0,u1,v0,v1,flipU){
+    const mat=new THREE.MeshStandardMaterial({map:tex(url),transparent:true,roughness:.4,metalness:.05,polygonOffset:true,polygonOffsetFactor:-4,depthWrite:false,side:THREE.FrontSide});
     paint.forEach(pm=>{
-      const pos=new THREE.Vector3(cx,cy,side*halfW);
-      const ori=new THREE.Euler(0,side>0?0:Math.PI,0);
-      const g=new DecalGeometry(pm,pos,ori,new THREE.Vector3(L,Hh,1.2));
-      if(g.attributes.position.count>0){const d=new THREE.Mesh(g,mat);decals.add(d);}
+      const g=pm.geometry,p=g.attributes.position,n=g.attributes.normal,idx=g.index;
+      const nm=new THREE.Matrix3().getNormalMatrix(pm.matrixWorld);
+      const P=[],N=[],U=[];
+      const vw=i=>new THREE.Vector3().fromBufferAttribute(p,i).applyMatrix4(pm.matrixWorld);
+      const nw=i=>new THREE.Vector3().fromBufferAttribute(n,i).applyMatrix3(nm).normalize();
+      const tri=(i0,i1,i2)=>{
+        const a=vw(i0),b=vw(i1),c=vw(i2),na=nw(i0),nb=nw(i1),nc=nw(i2);
+        const nz=(na.getComponent(axis)+nb.getComponent(axis)+nc.getComponent(axis))/3*sign;
+        if(nz<0.35)return;
+        const cen=a.clone().add(b).add(c).multiplyScalar(1/3);
+        const uAx=axis===2?'x':'z', vAx='y';
+        const cu=cen[uAx],cv=cen[vAx];
+        if(cu<u0||cu>u1||cv<v0||cv>v1)return;
+        [[a,na],[b,nb],[c,nc]].forEach(([q,nq])=>{
+          const o=q.clone().addScaledVector(nq,.006);P.push(o.x,o.y,o.z);N.push(nq.x,nq.y,nq.z);
+          let u=(q[uAx]-u0)/(u1-u0),v=(q[vAx]-v0)/(v1-v0);if(flipU)u=1-u;U.push(u,v);});
+      };
+      if(idx){for(let i=0;i<idx.count;i+=3)tri(idx.getX(i),idx.getX(i+1),idx.getX(i+2));}
+      else for(let i=0;i<p.count;i+=3)tri(i,i+1,i+2);
+      if(!P.length)return;
+      const dg=new THREE.BufferGeometry();dg.setAttribute('position',new THREE.Float32BufferAttribute(P,3));dg.setAttribute('normal',new THREE.Float32BufferAttribute(N,3));dg.setAttribute('uv',new THREE.Float32BufferAttribute(U,2));
+      decals.add(new THREE.Mesh(dg,mat));
     });
   }
-  const CL=0.0,CY=0.72;
-  addDecal('assets/lateral-esq.png',1,4.4,0.72,CL,CY);
-  addDecal('assets/lateral-dir.png',-1,4.4,0.72,CL,CY);
+  function addDecal(url,side,L,Hh,cx,cy){
+    // lado +z: u cresce com +x; lado -z visto de fora: u cresce com -x (arte espelhada já no arquivo)
+    project(url,2,side,cx-L/2,cx+L/2,cy-Hh/2,cy+Hh/2,side<0);
+  }
+  // calibrar a arte pelas rodas do modelo (arte: roda diant. x=-1.64 m, tras. x=+1.30 m, centro y=0.33 m)
+  const tyres=meshesOf(['pneu_low_ply']).map(o=>new THREE.Box3().setFromObject(o).getCenter(new THREE.Vector3()));
+  const pos=tyres.filter(c=>c.z>0);const fw=pos.reduce((p,c)=>c.x<p.x?c:p,pos[0]),rw=pos.reduce((p,c)=>c.x>p.x?c:p,pos[0]);
+  const k=(rw.x-fw.x)/2.94;const wy=(fw.y+rw.y)/2;
+  const CL=fw.x+1.64*k+ (-0.0) ;const cx=CL+ (0.0) ;
+  const cxA=fw.x-(-1.64)*k;               // x do centro da arte (arte centrada em 0)
+  const cyA=wy+0.42*k;
+  window.__cal={k,wy,fw:fw.x,rw:rw.x,cxA,cyA};
+  addDecal('assets/lateral-esq.png',1,4.4*k,0.72*k,cxA,cyA);
+  addDecal('assets/lateral-dir.png',-1,4.4*k,0.72*k,cxA,cyA);
   const halfL=(bx.max.x-bx.min.x)/2;
-  (function(){const mat=new THREE.MeshStandardMaterial({map:tex('assets/traseira.png'),transparent:true,roughness:.4,polygonOffset:true,polygonOffsetFactor:-4,depthWrite:false});
-    paint.forEach(pm=>{const g=new DecalGeometry(pm,new THREE.Vector3(halfL,0.86,0),new THREE.Euler(0,Math.PI/2,0),new THREE.Vector3(1.0,0.386,1.2));if(g.attributes.position.count>0)decals.add(new THREE.Mesh(g,mat));});})();
+  project('assets/traseira.png',0,1,-0.5,0.5,0.86-0.193,0.86+0.193,true);
   window.__decals=decals.children.length;
 });
 // ---- vistas ----
