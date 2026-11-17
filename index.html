@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Plotagem Legno · Saveiro 3D</title>
+<style>
+:root{--bg:#1b0f08;--ouro:#b3813f;--creme:#fcf8f0}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:radial-gradient(circle at 50% 40%,#3a2314,#140b06);color:var(--creme);font-family:"DM Sans",system-ui,sans-serif;overflow:hidden}
+#c{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:grab}
+#c:active{cursor:grabbing}
+header{position:fixed;left:20px;top:18px;right:20px;display:flex;justify-content:space-between;align-items:flex-start;pointer-events:none;gap:16px}
+h1{margin:0;font:600 clamp(20px,3.2vw,34px)/1.1 "Fraunces",Georgia,serif}
+h1 small{display:block;font:500 12px "DM Sans",sans-serif;letter-spacing:.18em;text-transform:uppercase;color:var(--ouro);margin-bottom:6px}
+nav{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);display:flex;flex-wrap:wrap;gap:8px;justify-content:center;width:min(94vw,640px)}
+button{font:600 14px "DM Sans",sans-serif;color:var(--creme);background:rgba(252,248,240,.08);border:1px solid rgba(179,129,63,.55);padding:10px 16px;border-radius:999px;cursor:pointer;backdrop-filter:blur(6px)}
+button:hover,button.on{background:var(--ouro);color:#1b0f08}
+#hint{position:fixed;right:20px;top:20px;font-size:12px;opacity:.7;text-align:right;pointer-events:none}
+#aviso{position:fixed;left:20px;bottom:74px;font-size:11px;opacity:.55;max-width:300px}
+#load{position:fixed;inset:0;display:grid;place-items:center;background:#140b06;transition:opacity .6s;font-size:14px;letter-spacing:.16em;text-transform:uppercase;color:var(--ouro)}
+@media(max-width:600px){#hint,#aviso{display:none}}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<header><h1><small>Legno Marcenaria</small>Plotagem do veículo</h1><div id="hint">Arraste para girar · role ou pince para aproximar</div></header>
+<div id="aviso">Modelo ilustrativo da VW Saveiro para validação da arte. Medidas finais a confirmar com o plotador.</div>
+<nav>
+<button data-v="3q" class="on">3/4</button><button data-v="esq">Esquerda</button><button data-v="dir">Direita</button><button data-v="tras">Traseira</button><button data-v="frente">Frente</button><button id="auto">Giro automático</button><button id="arte" class="on">Plotagem</button>
+</nav>
+<div id="load">Carregando</div>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+const cv=document.getElementById('c');
+const R=new THREE.WebGLRenderer({canvas:cv,antialias:true});
+R.setPixelRatio(Math.min(devicePixelRatio,2));R.shadowMap.enabled=true;R.shadowMap.type=THREE.PCFSoftShadowMap;
+R.outputColorSpace=THREE.SRGBColorSpace;R.toneMapping=THREE.ACESFilmicToneMapping;R.toneMappingExposure=1.05;
+const S=new THREE.Scene();
+const cam=new THREE.PerspectiveCamera(36,1,.1,100);
+const ctl=new OrbitControls(cam,cv);ctl.enableDamping=true;ctl.minDistance=3;ctl.maxDistance=11;ctl.maxPolarAngle=Math.PI/2-.03;ctl.target.set(0,.75,0);
+S.add(new THREE.HemisphereLight(0xfff2e0,0x2a1a10,1.1));
+const sun=new THREE.DirectionalLight(0xffffff,2.2);sun.position.set(4,7,5);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);
+Object.assign(sun.shadow.camera,{left:-5,right:5,top:5,bottom:-5,near:1,far:20});sun.shadow.bias=-.0004;S.add(sun);
+const fill=new THREE.DirectionalLight(0xffd9b0,.8);fill.position.set(-5,3,-4);S.add(fill);
+// chão
+const floor=new THREE.Mesh(new THREE.CircleGeometry(14,64),new THREE.MeshStandardMaterial({color:0x2a1a10,roughness:.85}));
+floor.rotation.x=-Math.PI/2;floor.receiveShadow=true;S.add(floor);
+// ---- carroceria (mm -> m; x = mm/1000-2.2 ; y = (1660-ymm)/1000) ----
+const X=v=>v/1000-2.2,Y=v=>(1660-v)/1000;
+const pts=[[0,1270],[0,820],[930,590],[1750,70],[2350,70],[2400,860],[4300,860],[4420,900],[4420,1270]];
+const sh=new THREE.Shape();pts.forEach(([x,y],i)=>i?sh.lineTo(X(x),Y(y)):sh.moveTo(X(x),Y(y)));sh.closePath();
+const WID=1.66;
+const geo=new THREE.ExtrudeGeometry(sh,{depth:WID,bevelEnabled:true,bevelSize:.06,bevelThickness:.06,bevelSegments:4,steps:1});
+geo.translate(0,0,-WID/2);
+const paint=new THREE.MeshPhysicalMaterial({color:0xf2f2ee,roughness:.35,metalness:.15,clearcoat:.8,clearcoatRoughness:.2});
+const body=new THREE.Mesh(geo,paint);body.castShadow=true;body.receiveShadow=true;S.add(body);
+// vidros
+const glassMat=new THREE.MeshPhysicalMaterial({color:0x10151a,roughness:.05,metalness:.6,clearcoat:1});
+const gs=new THREE.Shape();[[1010,570],[1710,115],[2320,115],[2330,570]].forEach(([x,y],i)=>i?gs.lineTo(X(x),Y(y)):gs.moveTo(X(x),Y(y)));gs.closePath();
+const gg=new THREE.ExtrudeGeometry(gs,{depth:WID+.13,bevelEnabled:false});gg.translate(0,0,-(WID+.13)/2);
+const glass=new THREE.Mesh(gg,glassMat);glass.scale.set(1,1,1);S.add(glass);
+// teto/pilar sobre vidro
+const roof=new THREE.Mesh(new THREE.BoxGeometry(.7,.06,WID+.12),paint);roof.position.set(X(2040),Y(70)+.02,0);roof.castShadow=true;S.add(roof);
+// caçamba
+const bed=new THREE.Mesh(new THREE.BoxGeometry(1.95,.04,WID-.2),new THREE.MeshStandardMaterial({color:0x0c0c0c,roughness:.9}));
+bed.position.set(X(3350),Y(860)+.07,0);S.add(bed);
+for(const z of [-1,1]){const w=new THREE.Mesh(new THREE.BoxGeometry(2.02,.3,.1),paint);w.position.set(X(3380),Y(710),z*(WID/2-.05));w.castShadow=true;S.add(w);}
+const tg=new THREE.Mesh(new THREE.BoxGeometry(.1,.34,WID),paint);tg.position.set(X(4400),Y(730),0);tg.castShadow=true;S.add(tg);
+const fw=new THREE.Mesh(new THREE.BoxGeometry(.1,.4,WID-.1),paint);fw.position.set(X(2460),Y(660),0);S.add(fw);
+// para-choques e cobertura preta
+const black=new THREE.MeshStandardMaterial({color:0x202020,roughness:.6});
+const pf=new THREE.Mesh(new THREE.BoxGeometry(.55,.27,WID+.04),black);pf.position.set(X(260),Y(1135),0);S.add(pf);
+const pt=new THREE.Mesh(new THREE.BoxGeometry(1.2,.3,WID+.04),black);pt.position.set(X(3780),Y(1120),0);S.add(pt);
+// rodas
+function wheel(xmm){const g=new THREE.Group();
+ const t=new THREE.Mesh(new THREE.CylinderGeometry(.33,.33,.22,40),new THREE.MeshStandardMaterial({color:0x111111,roughness:.9}));t.rotation.x=Math.PI/2;
+ const r=new THREE.Mesh(new THREE.CylinderGeometry(.2,.2,.23,24),new THREE.MeshStandardMaterial({color:0x9a9a9a,metalness:.8,roughness:.3}));r.rotation.x=Math.PI/2;
+ g.add(t,r);g.children.forEach(c=>c.castShadow=true);
+ for(const z of [-1,1]){const w=g.clone();w.position.set(X(xmm),Y(1330),z*(WID/2-.06));S.add(w);}}
+wheel(560);wheel(3500);
+// ---- plotagem ----
+const tl=new THREE.TextureLoader();const decals=new THREE.Group();S.add(decals);
+function tex(url){const t=tl.load(url);t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=R.capabilities.getMaxAnisotropy();return t;}
+function decal(url,w,h,pos,rotY){const m=new THREE.MeshStandardMaterial({map:tex(url),transparent:true,roughness:.4,metalness:.05,polygonOffset:true,polygonOffsetFactor:-2,depthWrite:false});
+ const p=new THREE.Mesh(new THREE.PlaneGeometry(w,h),m);p.position.copy(pos);p.rotation.y=rotY;decals.add(p);return p;}
+const zS=WID/2+.062;
+decal('assets/lateral-esq.png',4.4,.72,new THREE.Vector3(0,Y(910),zS),0);
+decal('assets/lateral-dir.png',4.4,.72,new THREE.Vector3(0,Y(910),-zS),Math.PI);
+const tr=decal('assets/traseira.png',1.0,.386,new THREE.Vector3(X(4420)+.07,Y(740),0),Math.PI/2);
+tr.rotation.z=0;
+// ---- vistas ----
+const V={ '3q':[5.6,2.2,5.2],esq:[0.001,1.2,7.2],dir:[0.001,1.2,-7.2],tras:[7.2,1.3,0.001],frente:[-7.2,1.3,0.001]};
+let goal=null;const cur=new THREE.Vector3();
+function go(k){goal=new THREE.Vector3(...V[k]);}
+cam.position.set(...V['3q']);
+document.querySelectorAll('nav [data-v]').forEach(b=>b.onclick=()=>{document.querySelectorAll('nav [data-v]').forEach(x=>x.classList.remove('on'));b.classList.add('on');ctl.autoRotate=false;autoB.classList.remove('on');go(b.dataset.v)});
+const autoB=document.getElementById('auto');autoB.onclick=()=>{ctl.autoRotate=!ctl.autoRotate;autoB.classList.toggle('on',ctl.autoRotate);goal=null};
+document.getElementById('arte').onclick=e=>{decals.visible=!decals.visible;e.target.classList.toggle('on',decals.visible)};
+ctl.autoRotateSpeed=1.2;cv.addEventListener('pointerdown',()=>{goal=null});
+function fit(){const w=innerWidth,h=innerHeight;R.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix();}
+addEventListener('resize',fit);fit();
+THREE.DefaultLoadingManager.onLoad=()=>{const l=document.getElementById('load');l.style.opacity=0;setTimeout(()=>l.remove(),700)};
+R.setAnimationLoop(()=>{if(goal){cam.position.lerp(goal,.08);if(cam.position.distanceTo(goal)<.02)goal=null}ctl.update();R.render(S,cam)});
+</script>
+</body>
+</html>
